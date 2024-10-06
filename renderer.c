@@ -5,12 +5,53 @@
 #include <windows.h>
 #include <d2d1.h>
 #include <wincodec.h>
+#include <dwrite.h>  // Para uso do DirectWrite
+#include <time.h>
+#include <initguid.h> // Inclua esta linha se necessário
+#include <guiddef.h>
+
+#ifdef DEFINE_GUID
+
+DEFINE_GUID(IID_IDWriteFactory, 
+0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb,0x48);
+
+#endif  // DEFINE_GUID
+
+// Variáveis globais para calcular FPS
+time_t startTime, endTime;
+long framesTime = 0;
+double fpsTime = 0.0f;
+
+clock_t startClock;
+int framesClock = 0;
+float fpsClock = 0.0f;
 
 // Ponteiros globais para interfaces Direct2D
 ID2D1Factory* pFactory = NULL;
 ID2D1HwndRenderTarget* pHwndRenderTarget = NULL;
 ID2D1Bitmap* pBitmap = NULL;
 IWICImagingFactory* pWICFactory = NULL;
+
+IDWriteFactory* pDWriteFactory = NULL;  // Para texto
+IDWriteTextFormat* pTextFormat = NULL;  // Para formatar o texto
+
+void CalculateFPSClock() {
+    ++framesClock;
+
+    if (!startClock) {
+        startClock = clock();
+        return;
+    }
+
+    clock_t currentTime = clock();
+    float elapsedTime = (float)(currentTime - startClock) / CLOCKS_PER_SEC;
+
+    if (elapsedTime > 1.0f) { // Atualiza o FPS CLock a cada segundo
+        fpsClock = framesClock / elapsedTime;
+        framesClock = 0;
+        startClock = currentTime;
+    }
+}
 
 // Função para carregar imagem PNG usando WIC
 HRESULT LoadBitmapFromFile(LPCWSTR uri, ID2D1HwndRenderTarget* pHwndRenderTarget, ID2D1Bitmap** ppBitmap) {
@@ -85,6 +126,32 @@ HRESULT InitD2D(HWND hwnd) {
         // Carrega a imagem .png
         hr = LoadBitmapFromFile(L"image.png", pHwndRenderTarget, &pBitmap);
     }
+    if (SUCCEEDED(hr)) {
+        // Inicializa DirectWrite para renderizar o texto
+        hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&pDWriteFactory);
+    }
+    if (FAILED(hr)) {
+        char* errorMsg = NULL;
+        FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+                      NULL, hr, 0, (LPSTR)&errorMsg, 0, NULL);
+
+        printf("HRESULT error: 0x%lx - %s\n", hr, errorMsg);
+        exit(-1);
+    }
+    if (SUCCEEDED(hr)) {
+        // Cria o formato de texto
+        hr = pDWriteFactory->lpVtbl->CreateTextFormat(
+            pDWriteFactory,
+            L"Arial",         // Fonte
+            NULL,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            24.0f,            // Tamanho da fonte
+            L"en-us",         // Localidade
+            &pTextFormat      // Ponteiro para armazenar o formato
+        );
+    }
 
     return hr;
 }
@@ -102,9 +169,48 @@ void OnPaint(HWND hwnd) {
     // Desenha o bitmap (a imagem PNG) em um quadrado de 256x256
     D2D1_RECT_F rectangle = {50, 50, 306, 306};
 
-    // Chame a função usando a função apontada
+    // Desenha a imagem na tela
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawBitmap((ID2D1RenderTarget*)pHwndRenderTarget, pBitmap, &rectangle, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, NULL);
 
+    ID2D1SolidColorBrush* pBrushFillRect;
+    ID2D1SolidColorBrush* pBrushRect;
+    D2D1_COLOR_F colorfillRect = {0.0f, 0.0f, 0.0f, 1.0f};
+    D2D1_COLOR_F colorRect = {0.0f, 0.8f, 0.0f, 1.0f};
+    D2D1_RECT_F fillRect = {500, 300, 800, 600};
+    D2D1_RECT_F rectRect = {500, 300, 800, 600};
+
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorfillRect, NULL, &pBrushFillRect);
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorRect, NULL, &pBrushRect);
+
+
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->FillRectangle((ID2D1RenderTarget*)pHwndRenderTarget, &rectRect, (ID2D1Brush*)pBrushRect);
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawRectangle((ID2D1RenderTarget*)pHwndRenderTarget, &fillRect, (ID2D1Brush*)pBrushFillRect, 1, NULL);
+
+    // Converte o valor de FPS Clock para string
+    wchar_t fpsClockText[50];
+    swprintf(fpsClockText, 50, L"FPS Clock: %f", fpsClock);
+
+    // Cria uma cor para o texto
+    D2D1_COLOR_F colorTextFpsClock = {0.0f, 0.0f, 0.0f, 1.0f};
+    ID2D1SolidColorBrush* pBrushText = NULL;
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorTextFpsClock, NULL, &pBrushText);
+
+    // Define a área onde o texto será desenhado
+    D2D1_RECT_F layoutRect = {400, 10, 800, 30};
+
+    // Desenha o FPS Clock no canto superior direito
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawText(
+        (ID2D1RenderTarget*)pHwndRenderTarget,
+        fpsClockText,
+        wcslen(fpsClockText),
+        pTextFormat,
+        &layoutRect,
+        (ID2D1Brush*)pBrushText,
+        D2D1_DRAW_TEXT_OPTIONS_NONE,
+        DWRITE_MEASURING_MODE_NATURAL
+    );
+
+    // Finaliza a renderização
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->EndDraw((ID2D1RenderTarget*)pHwndRenderTarget, NULL, NULL);
     EndPaint(hwnd, &ps);
 }
@@ -116,6 +222,9 @@ void Cleanup() {
 
 // Função da janela
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    // Calcula o FPS Clock
+    CalculateFPSClock();
+
     switch (uMsg) {
         case WM_PAINT:
             OnPaint(hwnd);
