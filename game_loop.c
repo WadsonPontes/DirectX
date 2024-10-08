@@ -86,11 +86,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         NULL);
 
     // Tornar a janela transparente
-    //SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
+    SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
     //SetLayeredWindowAttributes(hWnd, 0, 255, LWA_COLORKEY); 
 
     ShowWindow(hWnd, nCmdShow);
     //ShowWindow(hWnd, SW_HIDE);
+    //ShowWindow(hWnd, SW_SHOWNORMAL);
+    //ShowWindow(hWnd, SW_SHOWMAXIMIZED);
+    UpdateWindow(hWnd);
 
     // Inicialização do DirectX e Direct2D
     InitD3D(hWnd);
@@ -142,8 +145,10 @@ void InitD3D(HWND hWnd) {
     DXGI_SWAP_CHAIN_DESC scd;
     ZeroMemory(&scd, sizeof(DXGI_SWAP_CHAIN_DESC));
 
-    scd.BufferCount = 2;                                    // Um back buffer
+    scd.BufferCount = 1;                                    // Um back buffer
     scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;    // Formato 32-bit cor
+    scd.BufferDesc.RefreshRate.Numerator = 60;
+    scd.BufferDesc.RefreshRate.Denominator = 1;
     scd.BufferDesc.Width = 1920;
     scd.BufferDesc.Height = 1080;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;      // Alvo de renderização
@@ -207,7 +212,7 @@ void InitD2D(HWND hWnd) {
 
     D2D1_PIXEL_FORMAT pixelFormat = {
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-        D2D1_ALPHA_MODE_IGNORE
+        D2D1_ALPHA_MODE_PREMULTIPLIED
     };
     D2D1_RENDER_TARGET_PROPERTIES props = {
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
