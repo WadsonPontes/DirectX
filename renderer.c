@@ -1,4 +1,4 @@
-// gcc -o renderer.exe renderer.c -lgdi32 -ld2d1 -lole32 -luuid -lwindowscodecs
+// gcc -o renderer.exe renderer.c -lgdi32 -ld2d1 -lole32 -luuid -lwindowscodecs -ldwrite
 
 #include <stdio.h>
 #include <stdlib.h>
