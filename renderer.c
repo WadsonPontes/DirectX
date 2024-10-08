@@ -18,6 +18,13 @@ DEFINE_GUID(IID_IDWriteFactory,
 #endif  // DEFINE_GUID
 
 // Variáveis globais para calcular FPS
+LARGE_INTEGER frequencyQPC = {0};        // Frequência dos contadores de alta precisão
+LARGE_INTEGER startQPC = {0};     // Valor do contador no início do intervalo
+LARGE_INTEGER endQPC = {0};       // Valor do contador no final do intervalo
+double elapsedQPC = 0.0;
+long frameQPC = 0;
+double fpsQPC = 0.0;
+
 time_t startTime, endTime;
 long framesTime = 0;
 double fpsTime = 0.0f;
@@ -34,6 +41,51 @@ IWICImagingFactory* pWICFactory = NULL;
 
 IDWriteFactory* pDWriteFactory = NULL;  // Para texto
 IDWriteTextFormat* pTextFormat = NULL;  // Para formatar o texto
+
+void CalculateFPSQPC() {
+    ++frameQPC;
+
+    if (frequencyQPC.QuadPart == 0) {
+        QueryPerformanceFrequency(&frequencyQPC);
+    }
+
+    if (startQPC.QuadPart == 0) {
+        QueryPerformanceCounter(&startQPC);
+        return;
+    }
+
+    QueryPerformanceCounter(&endQPC);
+
+    if (endQPC.QuadPart - startQPC.QuadPart > 0 && frequencyQPC.QuadPart > 0) {
+        elapsedQPC = (double)(endQPC.QuadPart - startQPC.QuadPart) * 1000000.0 / frequencyQPC.QuadPart;
+
+        if (elapsedQPC >= 1000000.0) {
+            fpsQPC = frameQPC / (elapsedQPC / 1000000.0);
+            frameQPC = 0;
+            QueryPerformanceCounter(&startQPC);
+        }
+    }
+}
+
+void CalculateFPSTime() {
+    ++framesTime;
+
+    if (!startTime) {
+        startTime = time(NULL);
+        return;
+    }
+
+    endTime = time(NULL);
+
+    if (endTime > startTime) {
+        fpsTime = (double)framesTime/(double)(endTime - startTime);
+
+        if (difftime(endTime, startTime) > 1) {
+            framesTime = 0;
+            startTime = endTime;
+        }
+    }
+}
 
 void CalculateFPSClock() {
     ++framesClock;
@@ -186,17 +238,19 @@ void OnPaint(HWND hwnd) {
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->FillRectangle((ID2D1RenderTarget*)pHwndRenderTarget, &rectRect, (ID2D1Brush*)pBrushRect);
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawRectangle((ID2D1RenderTarget*)pHwndRenderTarget, &fillRect, (ID2D1Brush*)pBrushFillRect, 1, NULL);
 
+    // FPS Clock ---------------------------------------
+
     // Converte o valor de FPS Clock para string
     wchar_t fpsClockText[50];
     swprintf(fpsClockText, 50, L"FPS Clock: %f", fpsClock);
 
     // Cria uma cor para o texto
     D2D1_COLOR_F colorTextFpsClock = {0.0f, 0.0f, 0.0f, 1.0f};
-    ID2D1SolidColorBrush* pBrushText = NULL;
-    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorTextFpsClock, NULL, &pBrushText);
+    ID2D1SolidColorBrush* pBrushTextClock = NULL;
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorTextFpsClock, NULL, &pBrushTextClock);
 
     // Define a área onde o texto será desenhado
-    D2D1_RECT_F layoutRect = {400, 10, 800, 30};
+    D2D1_RECT_F rectClock = {400, 10, 800, 30};
 
     // Desenha o FPS Clock no canto superior direito
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawText(
@@ -204,11 +258,50 @@ void OnPaint(HWND hwnd) {
         fpsClockText,
         wcslen(fpsClockText),
         pTextFormat,
-        &layoutRect,
-        (ID2D1Brush*)pBrushText,
+        &rectClock,
+        (ID2D1Brush*)pBrushTextClock,
         D2D1_DRAW_TEXT_OPTIONS_NONE,
         DWRITE_MEASURING_MODE_NATURAL
     );
+
+    // FPS Time ---------------------------------------
+    ID2D1SolidColorBrush* pBrushTextTime = NULL;
+    D2D1_COLOR_F colorTextFpsTime = {0.0f, 0.0f, 0.0f, 1.0f};
+    D2D1_RECT_F rectTime = {400, 50, 800, 70};
+    wchar_t fpsTimeText[50];
+    swprintf(fpsTimeText, 50, L"FPS Time: %lf", fpsTime);
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorTextFpsTime, NULL, &pBrushTextTime);
+    // Desenha o FPS Time no canto superior direito
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawText(
+        (ID2D1RenderTarget*)pHwndRenderTarget,
+        fpsTimeText,
+        wcslen(fpsTimeText),
+        pTextFormat,
+        &rectTime,
+        (ID2D1Brush*)pBrushTextTime,
+        D2D1_DRAW_TEXT_OPTIONS_NONE,
+        DWRITE_MEASURING_MODE_NATURAL
+    );
+
+    // FPS QPC ---------------------------------------
+    ID2D1SolidColorBrush* pBrushTextQPC = NULL;
+    D2D1_COLOR_F colorTextFpsQPC = {0.0f, 0.0f, 0.0f, 1.0f};
+    D2D1_RECT_F rectQPC = {400, 90, 800, 120};
+    wchar_t fpsQPCText[50];
+    swprintf(fpsQPCText, 50, L"FPS QPC: %lf", fpsQPC);
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pHwndRenderTarget, &colorTextFpsQPC, NULL, &pBrushTextQPC);
+    // Desenha o FPS QPC no canto superior direito
+    ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->DrawText(
+        (ID2D1RenderTarget*)pHwndRenderTarget,
+        fpsQPCText,
+        wcslen(fpsQPCText),
+        pTextFormat,
+        &rectQPC,
+        (ID2D1Brush*)pBrushTextQPC,
+        D2D1_DRAW_TEXT_OPTIONS_NONE,
+        DWRITE_MEASURING_MODE_NATURAL
+    );
+
 
     // Finaliza a renderização
     ((ID2D1RenderTarget*)pHwndRenderTarget)->lpVtbl->EndDraw((ID2D1RenderTarget*)pHwndRenderTarget, NULL, NULL);
@@ -224,6 +317,8 @@ void Cleanup() {
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     // Calcula o FPS Clock
     CalculateFPSClock();
+    CalculateFPSTime();
+    CalculateFPSQPC();
 
     switch (uMsg) {
         case WM_PAINT:
