@@ -1,16 +1,23 @@
-// gcc game_loop.c -o game_loop.exe -ld3d11 -luuid
+// gcc game_loop.c -o game_loop.exe -ld3d11 -ld2d1 -luuid -lole32 -lwindowscodecs
 
 #include <stdio.h>
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
 #include <d2d1.h>
+#include <wincodec.h>
 
 // Variáveis globais DirectX
 IDXGISwapChain *swapChain;
 ID3D11Device *device;
 ID3D11DeviceContext *deviceContext;
 ID3D11RenderTargetView *backBuffer;
+
+// Variáveis Direct2D
+ID2D1Factory *pD2DFactory;
+ID2D1RenderTarget *pRenderTarget;
+ID2D1Bitmap *pBitmap;
+IWICImagingFactory *pWICFactory;
 
 // Variáveis para FPS
 LARGE_INTEGER frequency, startCounter, endCounter;
@@ -27,6 +34,7 @@ void CleanD3D(void);
 void RenderFrame(void);
 void InitFPSCounter(void);
 void UpdateFPS(void);
+void LoadBitmapFromFile(LPCWSTR uri, ID2D1Bitmap **ppBitmap);
 
 // Função principal
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
@@ -58,11 +66,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     ShowWindow(hWnd, nCmdShow);
 
-    // Inicialização do DirectX
+    // Inicialização do DirectX e Direct2D
     InitD3D(hWnd);
+    InitD2D(hWnd);
 
     // Inicializando QueryPerformanceCounter
     InitFPSCounter();
+
+    // Carregar a imagem
+    LoadBitmapFromFile(L"image.png", &pBitmap);
 
     // Loop principal
     MSG msg = {0};
@@ -81,7 +93,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         UpdateFPS();
     }
 
-    // Limpeza do DirectX
+    // Limpeza do DirectX e Direct2D
     CleanD3D();
 
     return msg.wParam;
@@ -116,16 +128,11 @@ void InitD3D(HWND hWnd) {
 
     const D3D_FEATURE_LEVEL level[] = {
         D3D_FEATURE_LEVEL_11_1,
-        D3D_FEATURE_LEVEL_11_0,
-        D3D_FEATURE_LEVEL_10_1,
-        D3D_FEATURE_LEVEL_10_0,
-        D3D_FEATURE_LEVEL_9_3,
-        D3D_FEATURE_LEVEL_9_2,
-        D3D_FEATURE_LEVEL_9_1
+        D3D_FEATURE_LEVEL_11_0
     };
 
     // Criação do dispositivo, contexto e swap chain
-    D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, level, 7,
+    D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT, level, 2,
         D3D11_SDK_VERSION, &scd, &swapChain, &device, NULL, &deviceContext);
 
     // Criação do back buffer
@@ -136,15 +143,65 @@ void InitD3D(HWND hWnd) {
 
     // Configurando o alvo de renderização
     deviceContext->lpVtbl->OMSetRenderTargets(deviceContext, 1, &backBuffer, NULL);
+}
 
-    // Definindo o viewport
-    D3D11_VIEWPORT viewport;
-    ZeroMemory(&viewport, sizeof(D3D11_VIEWPORT));
-    viewport.TopLeftX = 0;
-    viewport.TopLeftY = 0;
-    viewport.Width = 800;
-    viewport.Height = 600;
-    deviceContext->lpVtbl->RSSetViewports(deviceContext, 1, &viewport);
+// Inicializa o Direct2D e WIC (para carregar imagens)
+void InitD2D(HWND hWnd) {
+    D2D1_FACTORY_OPTIONS options = {D2D1_DEBUG_LEVEL_NONE};
+    D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, &options, (void **)&pD2DFactory);
+
+    // Criação de render target associado ao Direct3D
+    IDXGISurface *dxgiBackBuffer;
+    swapChain->lpVtbl->GetBuffer(swapChain, 0, &IID_IDXGISurface, (void **)&dxgiBackBuffer);
+
+    D2D1_PIXEL_FORMAT pixelFormat = {
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+        D2D1_ALPHA_MODE_IGNORE
+    };
+    D2D1_RENDER_TARGET_PROPERTIES props = {
+        D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        pixelFormat,
+        0,
+        0,
+        D2D1_RENDER_TARGET_USAGE_NONE,
+        D2D1_FEATURE_LEVEL_DEFAULT
+    };
+    D2D1_BITMAP_PROPERTIES bitmapProps = {
+        pixelFormat,
+        0,
+        0
+    };
+    pD2DFactory->lpVtbl->CreateDxgiSurfaceRenderTarget(pD2DFactory, dxgiBackBuffer, &props, &pRenderTarget);
+
+    // Inicializar a fábrica WIC para carregar imagens
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&pWICFactory);
+    dxgiBackBuffer->lpVtbl->Release(dxgiBackBuffer);
+}
+
+// Carrega um bitmap (imagem) de arquivo
+void LoadBitmapFromFile(LPCWSTR uri, ID2D1Bitmap **ppBitmap) {
+    IWICBitmapDecoder *pDecoder = NULL;
+    IWICBitmapFrameDecode *pFrame = NULL;
+    IWICFormatConverter *pConverter = NULL;
+
+    // Criar o decoder de imagem
+    pWICFactory->lpVtbl->CreateDecoderFromFilename(pWICFactory, uri, NULL, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &pDecoder);
+    
+    // Pegar o primeiro frame
+    pDecoder->lpVtbl->GetFrame(pDecoder, 0, &pFrame);
+    
+    // Converter o formato para um que o Direct2D entenda
+    pWICFactory->lpVtbl->CreateFormatConverter(pWICFactory, &pConverter);
+    pConverter->lpVtbl->Initialize(pConverter, (IWICBitmapSource*)pFrame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+
+    // Criar o bitmap no Direct2D a partir da imagem convertida
+    pRenderTarget->lpVtbl->CreateBitmapFromWicBitmap(pRenderTarget, (IWICBitmapSource*)pConverter, NULL, ppBitmap);
+
+    // Limpeza
+    pConverter->lpVtbl->Release(pConverter);
+    pFrame->lpVtbl->Release(pFrame);
+    pDecoder->lpVtbl->Release(pDecoder);
 }
 
 // Renderiza um frame
@@ -155,47 +212,49 @@ void RenderFrame(void) {
     // Limpeza do back buffer
     deviceContext->lpVtbl->ClearRenderTargetView(deviceContext, backBuffer, clearColor);
 
-    // Apresentação do back buffer no front buffer
+    // Iniciar a renderização com Direct2D
+    pRenderTarget->lpVtbl->BeginDraw(pRenderTarget);
+
+    // Desenhar a imagem carregada
+    if (pBitmap) {
+        D2D1_RECT_F rectangle = {0, 0, 400, 600};
+        pRenderTarget->lpVtbl->DrawBitmap(pRenderTarget, pBitmap, &rectangle, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, NULL);
+    }
+
+    pRenderTarget->lpVtbl->EndDraw(pRenderTarget, NULL, NULL);
+
+    // Apresentar o buffer trocado
     swapChain->lpVtbl->Present(swapChain, 0, 0);
 }
 
-// Limpeza do DirectX
-void CleanD3D(void) {
-    swapChain->lpVtbl->SetFullscreenState(swapChain, FALSE, NULL); // Garantir que o modo fullscreen esteja desativado
-    backBuffer->lpVtbl->Release(backBuffer);
-    swapChain->lpVtbl->Release(swapChain);
-    device->lpVtbl->Release(device);
-    deviceContext->lpVtbl->Release(deviceContext);
-}
-
-void InitFPSCounter() {
+// Inicializa o contador de FPS
+void InitFPSCounter(void) {
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&startCounter);
 }
 
-// Calcula e exibe o FPS
+// Atualiza o FPS
 void UpdateFPS(void) {
-    // Obtém o tempo atual
     QueryPerformanceCounter(&endCounter);
-
-    // Calcula o tempo decorrido em segundos
     frameTime = (double)(endCounter.QuadPart - startCounter.QuadPart) / frequency.QuadPart;
-
-    // Atualiza o contador de frames e o tempo acumulado
-    frameCount++;
+    startCounter = endCounter;
     elapsedTime += frameTime;
 
-    // Atualiza o FPS a cada segundo (ou seja, após acumular 1 segundo)
+    frameCount++;
     if (elapsedTime >= 1.0) {
-        fps = frameCount / elapsedTime;
-
-        printf("FPS: %lf\n", fps);
-
-        // Reseta os contadores
+        fps = (double)frameCount / elapsedTime;
+        printf("FPS: %.2f\n", fps);
         frameCount = 0;
         elapsedTime = 0.0;
     }
+}
 
-    // Atualiza o contador de tempo inicial
-    startCounter = endCounter;
+// Limpeza do DirectX e Direct2D
+void CleanD3D(void) {
+    swapChain->lpVtbl->Release(swapChain);
+    backBuffer->lpVtbl->Release(backBuffer);
+    device->lpVtbl->Release(device);
+    deviceContext->lpVtbl->Release(deviceContext);
+    pWICFactory->lpVtbl->Release(pWICFactory);
+    CoUninitialize();
 }
