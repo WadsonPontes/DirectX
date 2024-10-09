@@ -19,6 +19,13 @@ relogio = pygame.time.Clock()
 # Definindo uma fonte para exibir o FPS
 fonte = pygame.font.SysFont("Arial", 30)
 
+# Carregando a imagem PNG
+imagem = pygame.image.load('image.png')
+imagem_redimensionada = pygame.transform.scale(imagem, (400, 600))
+
+# Definindo a posição da imagem
+imagem_pos = (0, 0)
+
 # Cor de fundo
 cor_fundo = (0, 0, 0)  # Preto
 
@@ -32,6 +39,9 @@ while rodando:
 
     # Preenchendo a tela com a cor de fundo
     tela.fill(cor_fundo)
+
+    # Desenhando a imagem PNG na tela
+    tela.blit(imagem_redimensionada, imagem_pos)
 
     # Obtendo o FPS atual
     if count > 1000:
