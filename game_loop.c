@@ -1,4 +1,4 @@
-// gcc game_loop.c -o game_loop.exe -ld3d11 -ld2d1 -luuid -lole32 -lwindowscodecs
+// gcc game_loop.c -o game_loop.exe -ld3d11 -ld2d1 -luuid -lole32 -lwindowscodecs -ldwrite
 
 #include <stdio.h>
 #include <windows.h>
@@ -6,6 +6,12 @@
 #include <dxgi.h>
 #include <d2d1.h>
 #include <wincodec.h>
+#include <dwrite.h>
+#include <initguid.h>
+
+#ifdef DEFINE_GUID
+DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a, 0xd838, 0x4b5b, 0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb,0x48);
+#endif
 
 // Variáveis globais DirectX
 IDXGISwapChain *swapChain;
@@ -18,6 +24,10 @@ ID2D1Factory *pD2DFactory;
 ID2D1RenderTarget *pRenderTarget;
 ID2D1Bitmap *pBitmap;
 IWICImagingFactory *pWICFactory;
+ID2D1SolidColorBrush *brush;
+IDWriteFactory *writeFactory;
+IDWriteTextFormat *textFormat;
+wchar_t fpsText[16];
 
 // Variáveis para FPS
 LARGE_INTEGER frequency, startCounter, endCounter;
@@ -25,6 +35,11 @@ double frameTime = 0.0;
 double fps = 0.0;
 int frameCount = 0;
 double elapsedTime = 0.0;
+
+// Cor de limpeza do background (RGBA)
+float clearColor[4] = {0.0f, 0.2f, 0.4f, 1.0f};
+D2D1_RECT_F rectangle = {0, 0, 400, 600};
+D2D1_RECT_F layoutRect = {650.0f, 10.0f, 800.0f, 50.0f};
 
 // Prototipação
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -173,6 +188,17 @@ void InitD2D(HWND hWnd) {
     };
     pD2DFactory->lpVtbl->CreateDxgiSurfaceRenderTarget(pD2DFactory, dxgiBackBuffer, &props, &pRenderTarget);
 
+    D2D1_COLOR_F colorBack = {0.0f, 0.0f, 0.0f, 1.0f};
+    D2D1_COLOR_F colorWhite = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    // Cria o brush
+    ((ID2D1RenderTarget*)pRenderTarget)->lpVtbl->CreateSolidColorBrush((ID2D1RenderTarget*)pRenderTarget, &colorWhite, NULL, &brush);
+
+    // Cria e carrega a fonte
+    DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IID_IDWriteFactory, (IUnknown**)&writeFactory);
+    writeFactory->lpVtbl->CreateTextFormat(writeFactory, L"Arial", NULL, DWRITE_FONT_WEIGHT_NORMAL,
+                                           DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 24.0f, L"en-us", &textFormat);
+
     // Inicializar a fábrica WIC para carregar imagens
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&pWICFactory);
@@ -206,9 +232,6 @@ void LoadBitmapFromFile(LPCWSTR uri, ID2D1Bitmap **ppBitmap) {
 
 // Renderiza um frame
 void RenderFrame(void) {
-    // Cor de limpeza do background (RGBA)
-    float clearColor[4] = {0.0f, 0.2f, 0.4f, 1.0f};
-
     // Limpeza do back buffer
     deviceContext->lpVtbl->ClearRenderTargetView(deviceContext, backBuffer, clearColor);
 
@@ -216,10 +239,19 @@ void RenderFrame(void) {
     pRenderTarget->lpVtbl->BeginDraw(pRenderTarget);
 
     // Desenhar a imagem carregada
-    if (pBitmap) {
-        D2D1_RECT_F rectangle = {0, 0, 400, 600};
-        pRenderTarget->lpVtbl->DrawBitmap(pRenderTarget, pBitmap, &rectangle, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, NULL);
-    }
+    pRenderTarget->lpVtbl->DrawBitmap(pRenderTarget, pBitmap, &rectangle, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, NULL);
+
+    // Desenha o FPS na canto superior direito
+    ((ID2D1RenderTarget*)pRenderTarget)->lpVtbl->DrawText(
+        (ID2D1RenderTarget*)pRenderTarget,
+        fpsText,
+        wcslen(fpsText),
+        textFormat,
+        &layoutRect,
+        (ID2D1Brush*)brush,
+        D2D1_DRAW_TEXT_OPTIONS_NONE,
+        DWRITE_MEASURING_MODE_NATURAL
+    );
 
     pRenderTarget->lpVtbl->EndDraw(pRenderTarget, NULL, NULL);
 
@@ -243,7 +275,7 @@ void UpdateFPS(void) {
     frameCount++;
     if (elapsedTime >= 1.0) {
         fps = (double)frameCount / elapsedTime;
-        printf("FPS: %.2f\n", fps);
+        swprintf(fpsText, 16, L"FPS: %.2f", fps);
         frameCount = 0;
         elapsedTime = 0.0;
     }
