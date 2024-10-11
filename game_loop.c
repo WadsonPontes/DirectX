@@ -1,9 +1,12 @@
-// gcc game_loop.c -o game_loop.exe -ld3d11 -ld2d1 -luuid -lole32 -lwindowscodecs -ldwrite
+// gcc game_loop.c -o game_loop.exe -ld3d11 -ldxgi -ldxguid -ld2d1 -luuid -lole32 -lwindowscodecs -ldwrite -mwindows
+// -mwindows Remove o Console
+// Exemplos da Micorsoft: https://github.com/microsoft/Windows-classic-samples
 
 #include <stdio.h>
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <dxgi1_6.h>
 #include <d2d1.h>
 #include <wincodec.h>
 #include <dwrite.h>
@@ -37,7 +40,7 @@ int frameCount = 0;
 double elapsedTime = 0.0;
 
 // Cor de limpeza do background (RGBA)
-float clearColor[4] = {0.0f, 0.2f, 0.4f, 1.0f};
+float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};  // Limpa com transparência
 D2D1_RECT_F rectangle = {0, 0, 400, 600};
 D2D1_RECT_F layoutRect = {650.0f, 10.0f, 800.0f, 50.0f};
 
@@ -61,25 +64,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.lpszClassName = "WindowClass";
+    wc.lpszClassName = "janela_game_loop";
 
     RegisterClassEx(&wc);
 
     RECT wr = {0, 0, 800, 600};
     AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
 
+    //SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+    SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+
     HWND hWnd = CreateWindowEx(0,
-        "WindowClass",
+        "janela_game_loop",
         "Janela DirectX COM C",
         WS_OVERLAPPEDWINDOW,
-        300, 300,
+        0, 0,
         wr.right - wr.left, wr.bottom - wr.top,
         NULL,
         NULL,
         hInstance,
         NULL);
 
+    // Tornar a janela transparente
+    //SetLayeredWindowAttributes(hWnd, 0, 255, LWA_ALPHA);
+    //SetLayeredWindowAttributes(hWnd, 0, 255, LWA_COLORKEY); 
+
     ShowWindow(hWnd, nCmdShow);
+    //ShowWindow(hWnd, SW_HIDE);
 
     // Inicialização do DirectX e Direct2D
     InitD3D(hWnd);
@@ -131,24 +142,49 @@ void InitD3D(HWND hWnd) {
     DXGI_SWAP_CHAIN_DESC scd;
     ZeroMemory(&scd, sizeof(DXGI_SWAP_CHAIN_DESC));
 
-    scd.BufferCount = 1;                                    // Um back buffer
-    scd.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;     // Formato 32-bit cor
-    scd.BufferDesc.Width = 800;
-    scd.BufferDesc.Height = 600;
+    scd.BufferCount = 2;                                    // Um back buffer
+    scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;    // Formato 32-bit cor
+    scd.BufferDesc.Width = 1920;
+    scd.BufferDesc.Height = 1080;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;      // Alvo de renderização
     scd.OutputWindow = hWnd;                                // Janela de saída
     scd.SampleDesc.Count = 1;                               // Anti-aliasing 4x
     scd.SampleDesc.Quality = 0;
-    scd.Windowed = TRUE;                                    // Modo janela
+    scd.Windowed = FALSE;                                    // Modo janela
+    //scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    //scd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
     const D3D_FEATURE_LEVEL level[] = {
         D3D_FEATURE_LEVEL_11_1,
         D3D_FEATURE_LEVEL_11_0
     };
 
-    // Criação do dispositivo, contexto e swap chain
-    D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT, level, 2,
-        D3D11_SDK_VERSION, &scd, &swapChain, &device, NULL, &deviceContext);
+    IDXGIFactory6 *pFactory;
+    CreateDXGIFactory(&IID_IDXGIFactory6, (void **)&pFactory);
+
+    IDXGIAdapter *pAdapter = NULL;
+    IDXGIAdapter *bestAdapter = NULL;
+
+    //for (UINT i = 0; pFactory->lpVtbl->EnumAdapterByGpuPreference(pFactory, i, DXGI_GPU_PREFERENCE_MINIMUM_POWER, &IID_IDXGIAdapter, (void **)&pAdapter) != DXGI_ERROR_NOT_FOUND; i++) {
+    for (UINT i = 0; pFactory->lpVtbl->EnumAdapterByGpuPreference(pFactory, i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, &IID_IDXGIAdapter, (void **)&pAdapter) != DXGI_ERROR_NOT_FOUND; i++) {
+        bestAdapter = pAdapter;
+        break;
+    }
+
+    // Use o melhor adaptador encontrado (GPU dedicada)
+    if (bestAdapter) {
+        D3D11CreateDeviceAndSwapChain(bestAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT, level, 2,
+            D3D11_SDK_VERSION, &scd, &swapChain, &device, NULL, &deviceContext);
+        bestAdapter->lpVtbl->Release(bestAdapter);
+    } else {
+        // Caso não encontre um adaptador melhor, use o padrão
+        D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT, level, 2,
+            D3D11_SDK_VERSION, &scd, &swapChain, &device, NULL, &deviceContext);
+    }
+
+    pFactory->lpVtbl->Release(pFactory);
+
+    swapChain->lpVtbl->SetFullscreenState(swapChain, TRUE, NULL);
 
     // Criação do back buffer
     ID3D11Texture2D *pBackBuffer;
@@ -170,7 +206,7 @@ void InitD2D(HWND hWnd) {
     swapChain->lpVtbl->GetBuffer(swapChain, 0, &IID_IDXGISurface, (void **)&dxgiBackBuffer);
 
     D2D1_PIXEL_FORMAT pixelFormat = {
-        DXGI_FORMAT_B8G8R8A8_UNORM,
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
         D2D1_ALPHA_MODE_IGNORE
     };
     D2D1_RENDER_TARGET_PROPERTIES props = {
@@ -200,7 +236,8 @@ void InitD2D(HWND hWnd) {
                                            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 24.0f, L"en-us", &textFormat);
 
     // Inicializar a fábrica WIC para carregar imagens
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    //CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    //CoInitializeEx(NULL, COINIT_MULTITHREADED);
     CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&pWICFactory);
     dxgiBackBuffer->lpVtbl->Release(dxgiBackBuffer);
 }
@@ -256,6 +293,7 @@ void RenderFrame(void) {
     pRenderTarget->lpVtbl->EndDraw(pRenderTarget, NULL, NULL);
 
     // Apresentar o buffer trocado
+    //swapChain->lpVtbl->Present(swapChain, 0, DXGI_PRESENT_ALLOW_TEARING);
     swapChain->lpVtbl->Present(swapChain, 0, 0);
 }
 
