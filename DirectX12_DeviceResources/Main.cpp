@@ -29,41 +29,10 @@ namespace
     std::unique_ptr<Game> g_game;
 }
 
-// Variáveis para FPS
-LARGE_INTEGER frequency, startCounter, endCounter;
-double frameTime = 0.0;
-double fps = 0.0;
-wchar_t fpsText[16];
-int frameCount = 0;
-double elapsedTime = 0.0;
-
 LPCWSTR g_szAppName = L"$projectname$";
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ExitGame() noexcept;
-
-// Inicializa o contador de FPS
-void InitFPSCounter(void) {
-    QueryPerformanceFrequency(&frequency);
-    QueryPerformanceCounter(&startCounter);
-}
-
-// Atualiza o FPS
-void UpdateFPS(void) {
-    QueryPerformanceCounter(&endCounter);
-    frameTime = (double)(endCounter.QuadPart - startCounter.QuadPart) / frequency.QuadPart;
-    startCounter = endCounter;
-    elapsedTime += frameTime;
-
-    frameCount++;
-    if (elapsedTime >= 1.0) {
-        fps = (double)frameCount / elapsedTime;
-        swprintf(fpsText, 16, L"FPS: %.2f", fps);
-        printf("%ls\n", fpsText);
-        frameCount = 0;
-        elapsedTime = 0.0;
-    }
-}
 
 // Entry point
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
@@ -118,9 +87,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top);
     }
 
-    // Inicializando QueryPerformanceCounter
-    InitFPSCounter();
-
     // Main message loop
     MSG msg = {};
     while (WM_QUIT != msg.message)
@@ -132,9 +98,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         }
         else
         {
-            // Calcular e exibir FPS
-            UpdateFPS();
-
             g_game->Tick();
         }
     }
