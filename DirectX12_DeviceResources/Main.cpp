@@ -1,4 +1,4 @@
-// g++ -o DirectX12.exe ./*.cpp -ld3d12 -ldxgi -ldxguid -luuid -lkernel32 -luser32 -lcomdlg32 -ladvapi32 -lshell32 -lole32 -loleaut32 -lruntimeobject -municode -mwindows -std=c++23
+// g++ -o DirectX12.exe ./*.cpp -ld3d12 -ldxgi -ldxguid -luuid -lkernel32 -luser32 -lcomdlg32 -ladvapi32 -lshell32 -lole32 -loleaut32 -lruntimeobject -std=c++23
 //
 // Main.cpp
 //
@@ -66,19 +66,13 @@ void UpdateFPS(void) {
 }
 
 // Entry point
-int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-#ifdef __MINGW32__
     if (FAILED(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED)))
         return 1;
-#else
-    Microsoft::WRL::Wrappers::RoInitializeWrapper initialize(RO_INIT_MULTITHREADED);
-    if (FAILED(initialize))
-        return 1;
-#endif
 
     g_game = std::make_unique<Game>();
 
@@ -91,7 +85,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         wcex.lpfnWndProc = WndProc;
         wcex.hInstance = hInstance;
         wcex.hIcon = LoadIconW(hInstance, L"IDI_ICON");
-        wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         wcex.lpszClassName = L"$safeprojectname$WindowClass";
         wcex.hIconSm = LoadIconW(wcex.hInstance, L"IDI_ICON");
@@ -181,6 +175,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             PAINTSTRUCT ps;
             std::ignore = BeginPaint(hWnd, &ps);
             EndPaint(hWnd, &ps);
+        }
+        break;
+
+    case WM_DISPLAYCHANGE:
+        if (game)
+        {
+            game->OnDisplayChange();
+        }
+        break;
+
+    case WM_MOVE:
+        if (game)
+        {
+            game->OnWindowMoved();
         }
         break;
 
