@@ -30,12 +30,12 @@ IWICImagingFactory *pWICFactory;
 ID2D1SolidColorBrush *brush;
 IDWriteFactory *writeFactory;
 IDWriteTextFormat *textFormat;
-wchar_t fpsText[16];
 
 // Variáveis para FPS
 LARGE_INTEGER frequency, startCounter, endCounter;
 double frameTime = 0.0;
 double fps = 0.0;
+wchar_t fpsText[16];
 int frameCount = 0;
 double elapsedTime = 0.0;
 
