@@ -1,4 +1,4 @@
-// g++ -o DirectX12.exe ./*.cpp -ld3d12 -ldxgi -ldxguid -luuid -lkernel32 -luser32 -lcomdlg32 -ladvapi32 -lshell32 -lole32 -loleaut32 -lruntimeobject -std=c++23
+// g++ -o DirectX12.exe ./*.cpp -ld3d12 -ldxgi -ldxguid -luuid -lkernel32 -luser32 -lcomdlg32 -ladvapi32 -lshell32 -lole32 -loleaut32 -lruntimeobject -municode -mwindows -std=c++23
 //
 // Main.cpp
 //
@@ -66,7 +66,7 @@ void UpdateFPS(void) {
 }
 
 // Entry point
-int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
@@ -85,7 +85,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
         wcex.lpfnWndProc = WndProc;
         wcex.hInstance = hInstance;
         wcex.hIcon = LoadIconW(hInstance, L"IDI_ICON");
-        wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         wcex.lpszClassName = L"$safeprojectname$WindowClass";
         wcex.hIconSm = LoadIconW(wcex.hInstance, L"IDI_ICON");
